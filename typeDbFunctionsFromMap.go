@@ -121,6 +121,12 @@ func (el *DbFunctionsFromMap) WayTmpDeleteByOsmId(id int64) error {
 	return err
 }
 
+func (el *DbFunctionsFromMap) WayToPopulateInsert(data interface{}) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).InsertOne(context.TODO(), data)
+	return err
+}
+
 func (el *DbFunctionsFromMap) WayToPopulateUpdateLocations(id int64, loc, rad [][2]float64) error {
 	var err error
 	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).UpdateOne(context.TODO(), bson.M{"id": id}, bson.M{"$set": bson.M{"rad": rad, "loc": loc}})

@@ -13,6 +13,7 @@ type DbFunctionsFromMapInterface interface {
 	WayTmpDeleteByOsmId(id int64) error
 	WayToPopulateUpdateLocations(id int64, loc, rad [][2]float64) error
 	WayToPopulateDeleteByOsmId(id int64) error
+	WayToPopulateInsert(data interface{}) error
 	WayCount(query interface{}) (error, int64)
 	WayInsert(data interface{}) error
 	WayFind(query interface{}, pointerToResult *[]iotmaker_geo_osm.WayStt) error
