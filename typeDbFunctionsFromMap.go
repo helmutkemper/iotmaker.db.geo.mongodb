@@ -1,18 +1,25 @@
-package main
+package iotmaker_db_geo_mongodb
 
 import (
 	"context"
 	"errors"
-  iotmaker_geo_osm "github.com/helmutkemper/iotmaker.geo.osm"
-  "github.com/helmutkemper/osmpbf"
-  "go.mongodb.org/mongo-driver/mongo"
+	iotmaker_geo_osm "github.com/helmutkemper/iotmaker.geo.osm"
+	"github.com/helmutkemper/osmpbf"
+	"go.mongodb.org/mongo-driver/bson"
+	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 type DbFunctionsFromMap struct {
-	Client      interface{}
-	collections map[string]interface{}
-	dbString    string
+	Client   interface{}
+	dbString string
+
+	CollectionWay              string
+	CollectionTmpWay           string
+	CollectionWayToPopulate    string
+	CollectionSurrounding      string
+	CollectionSurroundingRight string
+	CollectionSurroundingLeft  string
 }
 
 //"mongodb://0.0.0.0:27017"
@@ -20,10 +27,9 @@ func (el *DbFunctionsFromMap) Connect(connection ...interface{}) error {
 	var err error
 	var connString string
 	var dbString string
-	var collectionsList []string
 
-	if len(connection) != 3 {
-		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
+	if len(connection) != 2 {
+		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name'")
 	}
 
 	switch connection[0].(type) {
@@ -31,11 +37,11 @@ func (el *DbFunctionsFromMap) Connect(connection ...interface{}) error {
 		connString = connection[0].(string)
 
 		if connString == "" {
-			return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
+			return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name'")
 		}
 
 	default:
-		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
+		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name'")
 	}
 
 	switch connection[1].(type) {
@@ -43,27 +49,13 @@ func (el *DbFunctionsFromMap) Connect(connection ...interface{}) error {
 		dbString = connection[1].(string)
 
 		if dbString == "" {
-			return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
+			return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name'")
 		}
 
 		el.dbString = dbString
 
 	default:
-		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
-	}
-
-	switch connection[2].(type) {
-	case []string:
-		collectionsList = connection[2].([]string)
-
-		if len(collectionsList) == 0 {
-			return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
-		}
-
-		el.collections = make(map[string]interface{})
-
-	default:
-		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name', []string{collections_list}")
+		return errors.New("connection must be a string like 'mongodb://0.0.0.0:27017', 'server_name'")
 	}
 
 	// Set client options
@@ -81,10 +73,6 @@ func (el *DbFunctionsFromMap) Connect(connection ...interface{}) error {
 		return err
 	}
 
-	for _, collectionName := range collectionsList {
-		el.collections[collectionName] = el.Client.(*mongo.Client).Database(el.dbString).Collection(collectionName)
-	}
-
 	return nil
 }
 
@@ -92,21 +80,24 @@ func (el *DbFunctionsFromMap) Disconnect() error {
 	return el.Client.(*mongo.Client).Disconnect(context.TODO())
 }
 
-func (el *DbFunctionsFromMap) FindTmpWay(collection, query interface{}, pointerToResult *[]osmpbf.Way) error {
+func (el *DbFunctionsFromMap) WayTmpInsert(data interface{}) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionTmpWay).InsertOne(context.TODO(), data)
+	return err
+}
+
+func (el *DbFunctionsFromMap) WayTmpFind(query interface{}, pointerToResult *[]osmpbf.Way) error {
 	var err error
 	var cursor *mongo.Cursor
 	var toDecode osmpbf.Way
 
-	coll := collection.(string)
-	if el.collections[coll] == false {
-		return errors.New("it appears that you do not have permission to access this collection or the name of it has been entered wrong. collection name: " + coll)
-	}
-
-	cursor, err = el.collections[coll].(*mongo.Collection).Find(context.TODO(), query)
+	*pointerToResult = make([]osmpbf.Way, 0)
+	cursor, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionTmpWay).Find(context.TODO(), query)
 
 	if cursor == nil {
 		return errors.New("mongodb.find().error: cursor is nil")
 	}
+	defer cursor.Close(context.TODO())
 
 	if err = cursor.Err(); err != nil {
 		return err
@@ -121,24 +112,50 @@ func (el *DbFunctionsFromMap) FindTmpWay(collection, query interface{}, pointerT
 		*pointerToResult = append(*pointerToResult, toDecode)
 	}
 
-	return cursor.Close(context.TODO())
+	return nil
 }
 
-func (el *DbFunctionsFromMap) FindWay(collection, query interface{}, pointerToResult *[]iotmaker_geo_osm.WayStt) error {
+func (el *DbFunctionsFromMap) WayTmpDeleteByOsmId(id int64) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionTmpWay).DeleteOne(context.TODO(), bson.M{"id": id})
+	return err
+}
+
+func (el *DbFunctionsFromMap) WayToPopulateUpdateLocations(id int64, loc, rad [][2]float64) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).UpdateOne(context.TODO(), bson.M{"id": id}, bson.M{"$set": bson.M{"rad": rad, "loc": loc}})
+	return err
+}
+
+func (el *DbFunctionsFromMap) WayToPopulateDeleteByOsmId(id int64) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).DeleteOne(context.TODO(), bson.M{"id": id})
+	return err
+}
+
+func (el *DbFunctionsFromMap) WayCount(query interface{}) (error, int64) {
+	count, err := el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWay).CountDocuments(context.TODO(), query)
+	return err, count
+}
+
+func (el *DbFunctionsFromMap) WayInsert(data interface{}) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWay).InsertOne(context.TODO(), data)
+	return err
+}
+
+func (el *DbFunctionsFromMap) WayFind(query interface{}, pointerToResult *[]iotmaker_geo_osm.WayStt) error {
 	var err error
 	var cursor *mongo.Cursor
 	var toDecode iotmaker_geo_osm.WayStt
 
-	coll := collection.(string)
-	if el.collections[coll] == false {
-		return errors.New("it appears that you do not have permission to access this collection or the name of it has been entered wrong. collection name: " + coll)
-	}
-
-	cursor, err = el.collections[coll].(*mongo.Collection).Find(context.TODO(), query)
+	*pointerToResult = make([]iotmaker_geo_osm.WayStt, 0)
+	cursor, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWay).Find(context.TODO(), query)
 
 	if cursor == nil {
 		return errors.New("mongodb.find().error: cursor is nil")
 	}
+	defer cursor.Close(context.TODO())
 
 	if err = cursor.Err(); err != nil {
 		return err
@@ -153,32 +170,23 @@ func (el *DbFunctionsFromMap) FindWay(collection, query interface{}, pointerToRe
 		*pointerToResult = append(*pointerToResult, toDecode)
 	}
 
-	return cursor.Close(context.TODO())
+	return nil
 }
 
-func (el *DbFunctionsFromMap) Count(collection, query interface{}) (error, int64) {
+func (el *DbFunctionsFromMap) SurroundingInsert(data interface{}) error {
 	var err error
-	var count int64
-
-	coll := collection.(string)
-	if el.collections[coll] == false {
-		return errors.New("it appears that you do not have permission to access this collection or the name of it has been entered wrong. collection name: " + coll), 0
-	}
-
-	count, err = el.collections[coll].(*mongo.Collection).CountDocuments(context.TODO(), query)
-
-	return err, count
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionSurrounding).InsertOne(context.TODO(), data)
+	return err
 }
 
-func (el *DbFunctionsFromMap) Insert(collection, data interface{}) error {
+func (el *DbFunctionsFromMap) SurroundingLeftInsert(data interface{}) error {
 	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionSurroundingLeft).InsertOne(context.TODO(), data)
+	return err
+}
 
-	coll := collection.(string)
-	if el.collections[coll] == false {
-		return errors.New("it appears that you do not have permission to access this collection or the name of it has been entered wrong. collection name: " + coll)
-	}
-
-	_, err = el.collections[coll].(*mongo.Collection).InsertOne(context.TODO(), data)
-
+func (el *DbFunctionsFromMap) SurroundingRightInsert(data interface{}) error {
+	var err error
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionSurroundingRight).InsertOne(context.TODO(), data)
 	return err
 }
