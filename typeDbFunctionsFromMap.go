@@ -121,6 +121,35 @@ func (el *DbFunctionsFromMap) WayTmpDeleteByOsmId(id int64) error {
 	return err
 }
 
+func (el *DbFunctionsFromMap) WayToPopulateFind(query interface{}, pointerToResult *[]iotmaker_geo_osm.WayStt) error {
+	var err error
+	var cursor *mongo.Cursor
+	var toDecode iotmaker_geo_osm.WayStt
+
+	*pointerToResult = make([]iotmaker_geo_osm.WayStt, 0)
+	cursor, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).Find(context.TODO(), query)
+
+	if cursor == nil {
+		return errors.New("mongodb.find().error: cursor is nil")
+	}
+	defer cursor.Close(context.TODO())
+
+	if err = cursor.Err(); err != nil {
+		return err
+	}
+
+	for cursor.Next(context.TODO()) {
+		err = cursor.Decode(&toDecode)
+		if err != nil {
+			return err
+		}
+
+		*pointerToResult = append(*pointerToResult, toDecode)
+	}
+
+	return nil
+}
+
 func (el *DbFunctionsFromMap) WayToPopulateInsert(data interface{}) error {
 	var err error
 	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).InsertOne(context.TODO(), data)
