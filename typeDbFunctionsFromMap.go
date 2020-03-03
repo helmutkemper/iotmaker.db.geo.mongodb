@@ -86,6 +86,11 @@ func (el *DbFunctionsFromMap) WayTmpInsert(data interface{}) error {
 	return err
 }
 
+func (el *DbFunctionsFromMap) WayTmpCount(query interface{}) (error, int64) {
+	count, err := el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionTmpWay).CountDocuments(context.TODO(), query)
+	return err, count
+}
+
 func (el *DbFunctionsFromMap) WayTmpFind(query interface{}, pointerToResult *[]osmpbf.Way) error {
 	var err error
 	var cursor *mongo.Cursor

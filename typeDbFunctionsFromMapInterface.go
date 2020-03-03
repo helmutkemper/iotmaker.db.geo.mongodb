@@ -9,6 +9,7 @@ type DbFunctionsFromMapInterface interface {
 	Connect(connection ...interface{}) error
 	Disconnect() error
 	WayTmpInsert(data interface{}) error
+	WayTmpCount(query interface{}) (error, int64)
 	WayTmpFind(query interface{}, pointerToResult *[]osmpbf.Way) error
 	WayTmpDeleteByOsmId(id int64) error
 	WayToPopulateFind(query interface{}, pointerToResult *[]iotmaker_geo_osm.WayStt) error
