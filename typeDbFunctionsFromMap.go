@@ -8,6 +8,7 @@ import (
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
+	"strconv"
 )
 
 type DbFunctionsFromMap struct {
@@ -161,9 +162,10 @@ func (el *DbFunctionsFromMap) WayToPopulateInsert(data interface{}) error {
 	return err
 }
 
-func (el *DbFunctionsFromMap) WayToPopulateUpdateLocations(id int64, loc, rad [][2]float64) error {
+func (el *DbFunctionsFromMap) WayToPopulateUpdateLocations(id, key int64, loc, rad [2]float64) error {
 	var err error
-	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).UpdateOne(context.TODO(), bson.M{"id": id}, bson.M{"$set": bson.M{"rad": rad, "loc": loc}})
+	var keyString = strconv.FormatInt(key, 10)
+	_, err = el.Client.(*mongo.Client).Database(el.dbString).Collection(el.CollectionWayToPopulate).UpdateOne(context.TODO(), bson.M{"id": id}, bson.M{"$set": bson.M{"rad." + keyString: rad, "loc." + keyString: loc}})
 	return err
 }
 
